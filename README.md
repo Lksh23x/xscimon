@@ -31,7 +31,7 @@ Pages: `/` today's digest, `/history`, `/domains`, `/keywords`, `/admin`.
 
 | Need | Why | Without it |
 |---|---|---|
-| Python ≥ 3.11 and [uv](https://docs.astral.sh/uv/) | runs the app | — |
+| [uv](https://docs.astral.sh/uv/) | installs Python 3.13 (pinned in `.python-version`) and dependencies | — |
 | [X API](https://developer.x.com) access, **Basic tier or higher**, with a bearer token *and* user-context keys | fetching timelines and searches | **Mock mode:** simulated posts, so you can explore the UI for free |
 | [Anthropic API key](https://console.anthropic.com) | relevance scoring (Claude Haiku) | mock scores |
 | [Proton Mail Bridge](https://proton.me/mail/bridge) running locally | emailing digests | sending is simulated (nothing is delivered) |
@@ -46,11 +46,15 @@ back 7 days.
 
 ```bash
 git clone https://github.com/Lksh23x/xscimon.git && cd xscimon
-uv venv && uv pip install -e ".[dev]"
+uv sync --extra dev               # fetches Python 3.13 if needed, creates .venv
 cp .env.example .env              # then fill in what you have (see below)
 uv run python scripts/seed.py     # load starter domains, accounts and skill prompts
 ./start.sh                        # → http://127.0.0.1:8000
 ```
+
+Python is pinned to 3.13 because some dependencies are built in Rust and don't yet
+publish prebuilt wheels for newer versions. Without wheels, installing would mean
+compiling them from source.
 
 `./start.sh` runs the server in the background, logging to `server.log`. Use
 `./stop.sh` and `./restart.sh` to manage it. For development with auto-reload, run

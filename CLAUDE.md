@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-# Install dependencies
-uv pip install -e ".[dev]"
+# Install dependencies (Python 3.13, pinned in .python-version)
+uv sync --extra dev
 
 # Load seed data (domains, skill prompts, accounts, keyword rules from seed/) — idempotent
 uv run python scripts/seed.py
