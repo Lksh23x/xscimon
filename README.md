@@ -45,7 +45,7 @@ back 7 days.
 ## Setup
 
 ```bash
-git clone <this repo> && cd xscimon
+git clone https://github.com/Lksh23x/xscimon.git && cd xscimon
 uv venv && uv pip install -e ".[dev]"
 cp .env.example .env              # then fill in what you have (see below)
 uv run python scripts/seed.py     # load starter domains, accounts and skill prompts
