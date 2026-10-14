@@ -1,0 +1,503 @@
+{% extends "base.html" %}
+
+{% block title %}Domains — xscimon{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Domains &amp; Accounts</h1>
+    <div class="page-header-meta">Manage monitored Twitter/X domains and their accounts</div>
+  </div>
+  <button class="btn btn-primary" onclick="openModal('add-domain-modal')">+ Add Domain</button>
+</div>
+
+<div class="page-body">
+
+  {% if not domains_with_accounts %}
+    <div class="posts-empty">
+      <p style="font-size:14px;font-weight:600;margin-bottom:6px;color:var(--text-secondary)">No domains configured</p>
+      <p>Click "Add Domain" to create your first domain.</p>
+    </div>
+  {% else %}
+    <div class="two-panel">
+
+      <!-- Left: domain list -->
+      <div class="panel-card">
+        <div class="panel-card-header">
+          <span class="panel-card-title">Domains ({{ domains_with_accounts|length }})</span>
+        </div>
+        <div class="panel-card-body">
+          {% for item in domains_with_accounts %}
+            <div
+              class="domain-list-item{% if loop.first %} selected{% endif %}"
+              onclick="selectDomain({{ item.domain.id }}, this)"
+              id="domain-list-item-{{ item.domain.id }}"
+            >
+              <div>
+                <div class="domain-list-item-name" id="domain-list-name-{{ item.domain.id }}">{{ item.domain.name }}</div>
+                <div class="domain-list-item-meta">{{ item.accounts|length }} account{{ item.accounts|length != 1 and "s" or "" }} · top {{ item.domain.top_n }}</div>
+              </div>
+              <div class="domain-list-item-actions">
+                <button
+                  class="btn btn-danger btn-sm"
+                  onclick="deleteDomain(event, {{ item.domain.id }}, '{{ item.domain.name }}')"
+                  title="Delete domain"
+                >✕</button>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Right: domain detail panels -->
+      <div>
+        {% for item in domains_with_accounts %}
+          <div
+            id="domain-detail-{{ item.domain.id }}"
+            class="panel-card"
+            {% if not loop.first %}style="display:none"{% endif %}
+          >
+            <div class="panel-card-header">
+              <span
+                class="panel-card-title renameable"
+                id="domain-title-{{ item.domain.id }}"
+                title="Double-click to rename"
+                ondblclick="startRename({{ item.domain.id }})"
+              >{{ item.domain.name }}</span>
+              <span class="text-sm text-muted">ID {{ item.domain.id }}</span>
+            </div>
+
+            <!-- Accounts section -->
+            <div class="domain-detail-section">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+                <div class="domain-detail-section-title" style="margin-bottom:0">Accounts ({{ item.accounts|length }})</div>
+                {% if item.accounts %}
+                  <div class="action-row">
+                    <button
+                      class="btn btn-outline btn-sm"
+                      id="enrich-btn-{{ item.domain.id }}"
+                      onclick="enrichAccounts({{ item.domain.id }})"
+                      title="Fetch bio and follower count from X for accounts missing profile data"
+                    >Enrich profiles</button>
+                    <a
+                      href="/api/domains/{{ item.domain.id }}/accounts/export?format=csv"
+                      class="btn btn-outline btn-sm"
+                      title="Download account list as CSV"
+                    >↓ CSV</a>
+                    <a
+                      href="/api/domains/{{ item.domain.id }}/accounts/export?format=json"
+                      class="btn btn-outline btn-sm"
+                      title="Download account list as JSON"
+                    >↓ JSON</a>
+                  </div>
+                {% endif %}
+              </div>
+
+              <!-- Add account form -->
+              <form onsubmit="addAccount(event, {{ item.domain.id }})" style="margin-bottom:12px;display:flex;gap:8px;align-items:center">
+                <div style="flex:1;position:relative;display:flex;align-items:center">
+                  <input
+                    type="text"
+                    class="form-input"
+                    name="handle"
+                    placeholder="@handle"
+                    style="flex:1;padding-right:28px"
+                    oninput="liveValidateHandle(this, {{ item.domain.id }})"
+                    required
+                  />
+                  <span class="handle-check-icon" id="handle-check-{{ item.domain.id }}" style="position:absolute;right:8px;font-size:15px;line-height:1;display:none"></span>
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm">Add</button>
+              </form>
+
+              <!-- Bulk import -->
+              <div style="margin-bottom:12px">
+                <div class="import-label-row">
+                  <label class="form-label" for="import-file-{{ item.domain.id }}">Bulk import (CSV/JSON)</label>
+                  <details class="format-help">
+                    <summary title="Show expected file formats" aria-label="Show expected file formats">?</summary>
+                    <div class="format-help-panel">
+                      <div class="format-help-title">CSV — simple (one handle per row, no header)</div>
+                      <pre>researcher_a
+lab_account
+@scientist_b</pre>
+                      <div class="format-help-title">CSV — export format (header row required)</div>
+                      <pre>handle,display_name,description,credibility
+researcher_a,Dr. A,Bio text here,normal
+lab_account,Smith Lab,,high</pre>
+                      <div class="format-help-title">JSON — list of account objects</div>
+                      <pre>[
+  {"handle": "researcher_a", "display_name": "Dr. A",
+   "description": "Bio here", "credibility": "normal"},
+  {"handle": "lab_account"}
+]</pre>
+                      <div class="format-help-note">
+                        Only <code>handle</code> is required. <code>credibility</code> is
+                        <code>low</code>, <code>normal</code> or <code>high</code>.
+                        A leading <code>@</code> is stripped (CSV only). Files exported from xscimon can be imported as-is.
+                      </div>
+                    </div>
+                  </details>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center">
+                  <input
+                    type="file"
+                    accept=".csv,.json"
+                    class="form-input"
+                    style="padding:5px;flex:1"
+                    id="import-file-{{ item.domain.id }}"
+                  />
+                  <button
+                    type="button"
+                    class="btn btn-outline btn-sm"
+                    onclick="bulkImport({{ item.domain.id }})"
+                  >Import</button>
+                </div>
+              </div>
+
+              {% if item.accounts %}
+                {% for account, added_at in item.accounts %}
+                  <div class="account-item">
+                    <div style="flex:1;min-width:0">
+                      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                        <a href="https://x.com/{{ account.handle }}" target="_blank" rel="noopener" class="account-x-link" title="View @{{ account.handle }} on X">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.259 5.63L18.244 2.25zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z"/></svg>
+                        </a>
+                        <div class="account-handle">{{ account.handle }}</div>
+                        {% if account.verified %}
+                          <span title="Account verified on X" style="color:#16a34a;font-size:14px;line-height:1">✓</span>
+                        {% else %}
+                          <span title="Account not found on X" style="color:#dc2626;font-size:14px;line-height:1">✗</span>
+                        {% endif %}
+                        {% if account.followers_count is not none %}
+                          <span class="account-followers">{{ account.followers_count | format_followers }} followers</span>
+                        {% endif %}
+                      </div>
+                      {% if account.display_name %}
+                        <div class="account-display-name" style="margin-top:2px">{{ account.display_name }}</div>
+                      {% endif %}
+                      {% if account.description %}
+                        <div class="account-description">{{ account.description }}</div>
+                      {% else %}
+                        <div class="account-description account-description-empty">No bio — click Enrich profiles to fetch</div>
+                      {% endif %}
+                      <div class="account-meta-row">
+                        {% if account.last_post_at %}
+                          <span title="Most recent post seen by xscimon">Last post {{ account.last_post_at | format_date }}</span>
+                        {% endif %}
+                        {% if account.last_post_at and added_at %}<span class="account-meta-sep">·</span>{% endif %}
+                        {% if added_at %}
+                          <span title="When this account was added to the domain">Added {{ added_at | format_date }}</span>
+                        {% endif %}
+                      </div>
+                    </div>
+                    <div class="action-row" style="flex-shrink:0;margin-top:2px">
+                      <select
+                        class="form-select"
+                        style="width:auto;padding:4px 8px;font-size:12px"
+                        onchange="setCredibility({{ account.id }}, this.value)"
+                      >
+                        <option value="low" {% if account.credibility.value == "low" %}selected{% endif %}>Low</option>
+                        <option value="normal" {% if account.credibility.value == "normal" %}selected{% endif %}>Normal</option>
+                        <option value="high" {% if account.credibility.value == "high" %}selected{% endif %}>High</option>
+                      </select>
+                      <button
+                        class="btn btn-danger btn-sm"
+                        onclick="removeAccount({{ account.id }}, {{ item.domain.id }})"
+                        title="Remove from domain"
+                      >✕</button>
+                    </div>
+                  </div>
+                {% endfor %}
+              {% else %}
+                <div class="text-sm text-muted" style="padding:10px 0">No accounts added yet.</div>
+              {% endif %}
+            </div>
+
+            <!-- SKILL.md section -->
+            <div class="domain-detail-section">
+              <div class="domain-detail-section-title">SKILL.md — Relevance context</div>
+              <form onsubmit="saveSkillMd(event, {{ item.domain.id }})">
+                <textarea
+                  name="skill_md"
+                  class="form-textarea"
+                  style="min-height:120px"
+                  placeholder="Describe what content is relevant for this domain. Used by the LLM to score posts."
+                >{{ item.domain.skill_md or "" }}</textarea>
+                <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+                  <button type="submit" class="btn btn-primary btn-sm">Save</button>
+                  <span class="text-sm text-muted" id="skill-save-msg-{{ item.domain.id }}"></span>
+                </div>
+              </form>
+            </div>
+
+            <!-- Top N setting -->
+            <div class="domain-detail-section">
+              <div class="domain-detail-section-title">Display settings</div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <label class="form-label" style="margin-bottom:0">Top N posts</label>
+                <input
+                  type="number"
+                  value="{{ item.domain.top_n }}"
+                  min="1" max="50"
+                  class="form-input"
+                  style="width:80px"
+                  onchange="updateTopN({{ item.domain.id }}, this.value)"
+                />
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+
+    </div>
+  {% endif %}
+
+</div>
+
+<!-- Add domain modal -->
+<dialog id="add-domain-modal">
+  <div class="modal-header">
+    <span class="modal-title">Add Domain</span>
+    <button class="modal-close" onclick="closeModal('add-domain-modal')">×</button>
+  </div>
+  <div class="modal-body">
+    <form id="add-domain-form" onsubmit="addDomain(event)">
+      <div class="form-group">
+        <label class="form-label">Domain name</label>
+        <input type="text" name="name" class="form-input" placeholder="e.g. Genomics" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Top N posts to display</label>
+        <input type="number" name="top_n" class="form-input" value="10" min="1" max="50" />
+      </div>
+  </div>
+  <div class="modal-footer">
+    <button type="button" class="btn btn-outline" onclick="closeModal('add-domain-modal')">Cancel</button>
+    <button type="submit" form="add-domain-form" class="btn btn-primary">Create</button>
+  </div>
+    </form>
+</dialog>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  function selectDomain(id, el) {
+    document.querySelectorAll('.domain-list-item').forEach(function(i) { i.classList.remove('selected'); });
+    document.querySelectorAll('.panel-card[id^="domain-detail-"]').forEach(function(p) { p.style.display = 'none'; });
+    el.classList.add('selected');
+    var detail = document.getElementById('domain-detail-' + id);
+    if (detail) detail.style.display = '';
+    sessionStorage.setItem('xscimon_domain', String(id));
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    var saved = sessionStorage.getItem('xscimon_domain');
+    if (saved) {
+      var item = document.getElementById('domain-list-item-' + saved);
+      if (item) selectDomain(parseInt(saved), item);
+    }
+  });
+
+  function addDomain(event) {
+    event.preventDefault();
+    var form = event.target;
+    var data = { name: form.name.value, top_n: parseInt(form.top_n.value) || 10 };
+    fetch('/api/domains', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)
+    }).then(function(r) {
+      if (r.ok) { location.reload(); }
+      else { r.json().then(function(d) { showToast('Error: ' + (d.detail || 'Failed'), 'error'); }); }
+    });
+    closeModal('add-domain-modal');
+  }
+
+  function deleteDomain(event, id, name) {
+    event.stopPropagation();
+    if (!confirm('Delete domain "' + name + '"? This cannot be undone.')) return;
+    fetch('/api/domains/' + id, { method: 'DELETE' })
+    .then(function(r) { if (r.ok || r.status === 204) { location.reload(); } });
+  }
+
+  function addAccount(event, domainId) {
+    event.preventDefault();
+    var form = event.target;
+    var handle = form.handle.value.replace(/^@/, '');
+    var btn = form.querySelector('button[type="submit"]');
+    btn.disabled = true;
+    btn.textContent = 'Checking…';
+    fetch('/api/domains/' + domainId + '/accounts', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({handle: handle})
+    }).then(function(r) {
+      if (r.ok) { location.reload(); }
+      else { r.json().then(function(d) { showToast((d.detail || 'Failed to add account'), 'error'); }); }
+    }).finally(function() { btn.disabled = false; btn.textContent = 'Add'; });
+  }
+
+  function removeAccount(accountId, domainId) {
+    if (!confirm('Remove this account from the domain?')) return;
+    fetch('/api/domains/' + domainId + '/accounts/' + accountId, { method: 'DELETE' })
+    .then(function(r) { if (r.ok || r.status === 204) { location.reload(); } });
+  }
+
+  function setCredibility(accountId, level) {
+    fetch('/api/domains/accounts/' + accountId + '/credibility', {
+      method: 'PATCH', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({credibility: level})
+    }).then(function(r) {
+      if (r.ok) { showToast('Credibility updated', 'success'); }
+      else { showToast('Failed to update credibility', 'error'); }
+    });
+  }
+
+  function saveSkillMd(event, domainId) {
+    event.preventDefault();
+    var skill_md = event.target.skill_md.value;
+    fetch('/api/domains/' + domainId, {
+      method: 'PATCH', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({skill_md: skill_md})
+    }).then(function(r) {
+      var msg = document.getElementById('skill-save-msg-' + domainId);
+      if (r.ok) { msg.textContent = 'Saved!'; setTimeout(function(){ msg.textContent = ''; }, 2000); }
+      else { msg.textContent = 'Error saving'; msg.style.color = 'red'; }
+    });
+  }
+
+  function updateTopN(domainId, val) {
+    fetch('/api/domains/' + domainId, {
+      method: 'PATCH', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({top_n: parseInt(val)})
+    }).then(function(r) {
+      if (r.ok) showToast('Top N updated', 'success');
+    });
+  }
+
+  var _handleCheckTimers = {};
+  function liveValidateHandle(input, domainId) {
+    var icon = document.getElementById('handle-check-' + domainId);
+    var handle = input.value.replace(/^@/, '').trim();
+    clearTimeout(_handleCheckTimers[domainId]);
+    if (!handle) { icon.style.display = 'none'; return; }
+    icon.style.display = '';
+    icon.textContent = '…';
+    icon.style.color = '#9ca3af';
+    _handleCheckTimers[domainId] = setTimeout(function() {
+      fetch('/api/domains/accounts/verify?handle=' + encodeURIComponent(handle))
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (d.exists) {
+            icon.textContent = '✓';
+            icon.style.color = '#16a34a';
+          } else {
+            icon.textContent = '✗';
+            icon.style.color = '#dc2626';
+          }
+        })
+        .catch(function() { icon.style.display = 'none'; });
+    }, 600);
+  }
+
+  function startRename(domainId) {
+    var span = document.getElementById('domain-title-' + domainId);
+    var current = span.textContent.trim();
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.value = current;
+    input.className = 'form-input';
+    input.style.cssText = 'font-size:inherit;font-weight:inherit;padding:2px 6px;height:auto;width:200px';
+
+    var done = false;
+    function finish(save) {
+      if (done) return;
+      done = true;
+      var newName = input.value.trim();
+      input.replaceWith(span);
+      if (!save || !newName || newName === current) return;
+      fetch('/api/domains/' + domainId, {
+        method: 'PATCH', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name: newName}),
+      }).then(function(r) {
+        if (r.ok) {
+          span.textContent = newName;
+          var listName = document.getElementById('domain-list-name-' + domainId);
+          if (listName) listName.textContent = newName;
+          showToast('Domain renamed.', 'success');
+        } else {
+          span.textContent = current;
+          r.json().then(function(d) { showToast('Rename failed: ' + (d.detail || 'error'), 'error'); });
+        }
+      });
+    }
+
+    span.replaceWith(input);
+    input.focus();
+    input.select();
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+      if (e.key === 'Escape') { finish(false); }
+    });
+    input.addEventListener('blur', function() { finish(true); });
+  }
+
+  function enrichAccounts(domainId) {
+    var btn = document.getElementById('enrich-btn-' + domainId);
+    btn.disabled = true;
+    btn.textContent = 'Fetching…';
+    fetch('/api/domains/' + domainId + '/accounts/enrich', { method: 'POST' })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.error) {
+          showToast('Failed to fetch profiles: ' + d.error, 'error');
+          btn.disabled = false;
+          btn.textContent = 'Enrich profiles';
+        } else if (d.enriched > 0) {
+          showToast('Enriched ' + d.enriched + ' profile' + (d.enriched !== 1 ? 's' : ''), 'success');
+          location.reload();
+        } else {
+          showToast('All profiles already up to date', 'success');
+          btn.disabled = false;
+          btn.textContent = 'Enrich profiles';
+        }
+      })
+      .catch(function() {
+        showToast('Failed to fetch profiles', 'error');
+        btn.disabled = false;
+        btn.textContent = 'Enrich profiles';
+      });
+  }
+
+  function bulkImport(domainId) {
+    var fileInput = document.getElementById('import-file-' + domainId);
+    var file = fileInput.files[0];
+    if (!file) { showToast('Select a file first.', 'error'); return; }
+
+    var formData = new FormData();
+    formData.append('file', file);
+
+    fetch('/api/domains/' + domainId + '/accounts/import', {
+      method: 'POST',
+      body: formData,
+    }).then(function(r) {
+      return r.json().then(function(d) { return { ok: r.ok, data: d }; });
+    }).then(function(res) {
+      if (!res.ok) {
+        var detail = res.data.detail;
+        var msg = (typeof detail === 'object' && detail.error) ? detail.error : (detail || 'Import failed');
+        if (typeof detail === 'object' && detail.expected_format) {
+          msg += '\n\nExpected format:\n' + detail.expected_format;
+        }
+        showToast(msg, 'error');
+        return;
+      }
+      var d = res.data;
+      var parts = [d.loaded + ' loaded'];
+      if (d.invalid > 0) parts.push(d.invalid + ' invalid');
+      if (d.duplicates > 0) parts.push(d.duplicates + ' skipped (duplicate)');
+      showToast('Import complete: ' + parts.join(', '), d.loaded > 0 ? 'success' : 'error');
+      if (d.loaded > 0) location.reload();
+    });
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,79 @@
+{% if result.get("error") %}
+  <div class="rule-results">
+    <div style="display:flex;align-items:center;gap:8px;padding:10px 0;color:var(--status-error);font-size:13px">
+      <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="8" r="6"/><path d="M8 5v3M8 10.5v.5" stroke-linecap="round"/></svg>
+      <strong>Error:</strong> {{ result.error }}
+    </div>
+  </div>
+{% else %}
+  <div class="rule-results">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px">
+      <span class="text-sm text-muted">
+        Fetched <strong style="color:var(--text-secondary)">{{ result.fetched_count }}</strong>
+        → kept <strong style="color:var(--text-secondary)">{{ result.scored_count }}</strong>
+        → showing <strong style="color:var(--text-secondary)">{{ result.posts | length }}</strong>
+        · {{ result.api_calls }} API call{{ result.api_calls != 1 and "s" or "" }}
+      </span>
+      <span class="text-sm font-mono text-muted" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px" title="{{ result.query }}">
+        {{ result.query }}
+      </span>
+    </div>
+
+    {% if result.posts %}
+      {% for post in result.posts %}
+        <div class="kw-result-card">
+          <div class="kw-result-card-handle">
+            @{{ post.author_handle }}
+            <span class="text-muted" style="font-weight:400;font-family:var(--font-sans)">
+              · {{ post.created_at | format_dt }}
+            </span>
+            <span class="score-pill" style="margin-left:6px">{{ post.relevance_score }}</span>
+          </div>
+          <div class="kw-result-card-text">{{ post.text | truncate_text(240) }}</div>
+          <div class="post-engagement" style="margin-top:6px">
+            <span class="post-engagement-item">♥ {{ post.likes }}</span>
+            <span class="post-engagement-item">🔁 {{ post.retweets }}</span>
+            {% if post.post_id and not post.post_id.startswith("mock-") %}
+              <a
+                href="https://x.com/{{ post.author_handle }}/status/{{ post.post_id }}"
+                target="_blank"
+                rel="noopener"
+                class="text-sm"
+                style="margin-left:auto;color:var(--accent);text-decoration:none"
+              >View on X ↗</a>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+
+      <form style="margin-top:12px;display:flex;justify-content:flex-end">
+        <input type="hidden" name="rule_name"    value="{{ result.rule_name }}" />
+        <input type="hidden" name="query"        value="{{ result.query }}" />
+        <input type="hidden" name="lookback_days"  value="{{ result.lookback_days }}" />
+        <input type="hidden" name="api_calls_used" value="{{ result.api_calls }}" />
+        <input type="hidden" name="fetched_count"  value="{{ result.fetched_count }}" />
+        <input type="hidden" name="scored_count"   value="{{ result.scored_count }}" />
+        <input type="hidden" name="search_from"  value="{{ result.search_from }}" />
+        <input type="hidden" name="search_to"    value="{{ result.search_to }}" />
+        <input type="hidden" name="posts_json"   value="{{ result.posts | tojson_str }}" />
+        <button
+          type="button"
+          class="btn btn-outline btn-sm"
+          hx-post="/htmx/keywords/{{ result.rule_id }}/save"
+          hx-include="closest form"
+          hx-target="closest form"
+          hx-swap="outerHTML"
+        >
+          Save to History
+        </button>
+      </form>
+
+    {% elif result.fetched_count == 0 %}
+      <div class="text-sm text-muted">No posts matched the query in the lookback window.</div>
+    {% else %}
+      <div class="text-sm text-muted">
+        {{ result.fetched_count }} post{{ result.fetched_count != 1 and "s" or "" }} fetched but all were filtered out as low-signal (too short, conversational, or zero engagement).
+      </div>
+    {% endif %}
+  </div>
+{% endif %}

@@ -1,0 +1,21 @@
+{% if status == "complete" or status == "ok" %}
+  <span class="status-badge status-badge-complete">
+    <span class="status-dot status-dot-complete"></span>
+    {{ message }}
+  </span>
+{% elif status == "error" %}
+  <span class="status-badge status-badge-error">
+    <span class="status-dot status-dot-error"></span>
+    {{ message }}
+  </span>
+{% elif status == "partial" %}
+  <span class="status-badge status-badge-partial">
+    <span class="status-dot status-dot-partial"></span>
+    {{ message }}
+  </span>
+{% else %}
+  <span class="status-badge status-badge-pending">
+    <span class="status-dot status-dot-pending"></span>
+    {{ message }}
+  </span>
+{% endif %}

@@ -1,0 +1,51 @@
+{% set d = domain %}
+<div class="posts-section-header">
+  <div style="display:flex;align-items:center;gap:10px">
+    <span class="posts-section-title">{{ d.domain_name }}</span>
+    {% if d.status == "complete" %}
+      <span class="badge badge-enabled">complete</span>
+    {% elif d.status == "partial" %}
+      <span class="badge badge-low">partial</span>
+    {% elif d.status == "error" %}
+      <span class="badge" style="background:rgba(255,69,96,0.12);color:#ff4560">error</span>
+    {% else %}
+      <span class="badge badge-disabled">pending</span>
+    {% endif %}
+  </div>
+  <div class="action-row">
+    <span class="text-sm text-muted">{{ d.api_calls_used }} API call{{ d.api_calls_used|int != 1 and "s" or "" }}</span>
+    <button
+      class="btn btn-outline btn-sm"
+      hx-post="/htmx/domains/{{ d.domain_id }}/fetch?days={{ window or 1 }}&force=true"
+      hx-target="#domain-{{ d.domain_id }}"
+      hx-swap="innerHTML"
+      hx-indicator="#refetch-spinner-{{ d.domain_id }}"
+      hx-disabled-elt="this"
+      title="Force: fetch every account in this domain again for the {{ (window or 1) == 1 and 'whole day' or 'last ' ~ window ~ ' days' }}, even what was already fetched"
+    >
+      <span id="refetch-spinner-{{ d.domain_id }}" class="htmx-indicator"><span class="spinner"></span></span>
+      Re-fetch
+    </button>
+  </div>
+</div>
+
+{% if d.status_reason %}
+  <div class="text-sm mb-2" style="background:rgba(255,149,0,0.08);padding:8px 12px;border-radius:6px;border-left:2px solid #ff9500;color:#ff9500">
+    {{ d.status_reason }}
+  </div>
+{% endif %}
+
+{% if d.posts %}
+  {% for post in d.posts %}
+    {% include "partials/post_card.html" %}
+  {% endfor %}
+{% else %}
+  <div class="posts-empty">
+    No posts for this domain yet. Run the pipeline to fetch content.
+  </div>
+{% endif %}
+
+{% if oob_count %}
+  {# HTMX responses only: refresh this domain's post count in the tab bar #}
+  <span id="domain-count-{{ d.domain_id }}" class="text-muted text-sm" hx-swap-oob="true">({{ d.posts|length }})</span>
+{% endif %}

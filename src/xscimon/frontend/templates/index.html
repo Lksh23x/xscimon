@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+
+{% block title %}Digest — {{ digest.date }} — xscimon{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Digest{% if window > 1 %} <span style="font-weight:400;color:var(--text-muted)">· last {{ window }} days</span>{% endif %}</h1>
+    <div class="page-header-meta">
+      {% if window == 1 %}{{ digest.date }}{% else %}{{ digest.date }} · ranked by relevance{% endif %}
+    </div>
+  </div>
+  <div class="action-row">
+    <!-- Window selector -->
+    <div class="domain-tabs" style="margin-bottom:0;flex-wrap:nowrap">
+      {% for w, label in [(1, "Today"), (3, "3d"), (7, "7d"), (14, "14d"), (30, "30d"), (60, "60d"), (90, "90d")] %}
+        <a href="/?window={{ w }}"
+           class="domain-tab{% if window == w %} active{% endif %}"
+           onclick="return goWindow(this, {{ w }})"
+        >{{ label }}</a>
+      {% endfor %}
+    </div>
+    <button class="domain-tab" id="star-filter-btn" onclick="toggleStarFilter(this)" title="Show saved posts only">♥ Saved</button>
+    <button class="btn btn-outline" onclick="openModal('share-modal')">Share</button>
+    {% if digest.domains %}
+      <button
+        class="btn btn-outline"
+        id="fetch-domain-btn"
+        onclick="fetchActiveDomain(this)"
+        title="Fetch the selected domain for the {{ window == 1 and 'whole day' or 'last ' ~ window ~ ' days' }} — only what hasn't been fetched yet"
+      >
+        <span id="fetch-domain-spinner" class="htmx-indicator"><span class="spinner spinner-dark"></span></span>
+        Fetch
+      </button>
+    {% endif %}
+    <button
+      class="btn btn-primary"
+      hx-post="/htmx/pipeline/run?days={{ window }}"
+      hx-target="#pipeline-status"
+      hx-swap="outerHTML"
+      hx-indicator="#pipeline-spinner"
+      title="Fetch all domains for the {{ window == 1 and 'whole day' or 'last ' ~ window ~ ' days' }} — only what hasn't been fetched yet"
+    >
+      <span id="pipeline-spinner" class="htmx-indicator">
+        <span class="spinner"></span>
+      </span>
+      Run Pipeline
+    </button>
+    <div id="pipeline-status"></div>
+  </div>
+</div>
+
+<div class="page-body">
+
+  {% if not digest.domains %}
+    <div class="posts-empty">
+      <p style="font-size:14px;font-weight:600;margin-bottom:6px;color:var(--text-secondary)">No domains configured</p>
+      <p>Add domains on the <a href="/domains">Domains</a> page and run the pipeline to see posts here.</p>
+    </div>
+
+  {% else %}
+    <!-- Domain tabs -->
+    <div class="domain-tabs" id="domain-tabs">
+      {% for domain in digest.domains %}
+        <a
+          href="#domain-{{ domain.domain_id }}"
+          class="domain-tab{% if loop.first %} active{% endif %}"
+          data-domain-id="{{ domain.domain_id }}"
+          onclick="showDomain({{ domain.domain_id }}, this); return false;"
+        >
+          <span class="status-dot status-dot-{{ domain.status }}"></span>
+          {{ domain.domain_name }}
+          <span id="domain-count-{{ domain.domain_id }}" class="text-muted text-sm">({{ domain.posts|length }})</span>
+        </a>
+      {% endfor %}
+    </div>
+
+    <!-- Domain post panels -->
+    {% for domain in digest.domains %}
+      <div
+        id="domain-{{ domain.domain_id }}"
+        class="domain-panel"
+        {% if not loop.first %}style="display:none"{% endif %}
+      >
+        {% set digest_date = digest.date %}
+        {% include "partials/domain_panel_body.html" %}
+      </div>
+    {% endfor %}
+
+  {% endif %}
+
+</div>
+
+<!-- Share Digest Modal -->
+<dialog id="share-modal">
+  <div class="modal-header">
+    <span class="modal-title">Share Digest</span>
+    <button class="modal-close" onclick="closeModal('share-modal')">×</button>
+  </div>
+  <form method="dialog">
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Recipient email</label>
+        <input type="email" name="to" class="form-input" placeholder="user@example.com" required />
+      </div>
+      {% if digest.domains %}
+        <div class="form-group">
+          <label class="form-label">Include domains</label>
+          {% for domain in digest.domains %}
+            <div class="checkbox-row">
+              <input type="checkbox" name="domains" value="{{ domain.domain_id }}" checked />
+              <span>{{ domain.domain_name }}</span>
+              <span class="text-muted text-sm">({{ domain.posts|length }} posts)</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline" onclick="closeModal('share-modal')">Cancel</button>
+      <button type="button" class="btn btn-primary" onclick="sendDigest(this)">Send</button>
+    </div>
+  </form>
+</dialog>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  // Restore last-used window on bare "/" loads
+  (function() {
+    var path = window.location.pathname;
+    var hasWindow = window.location.search.indexOf('window=') !== -1;
+    if (path === '/' && !hasWindow) {
+      var saved = localStorage.getItem('xscimon_window');
+      if (saved && saved !== '1') {
+        window.location.replace('/?window=' + saved + window.location.hash);
+      }
+    }
+  })();
+
+  function saveWindow(w) {
+    localStorage.setItem('xscimon_window', String(w));
+  }
+
+  // Switch time window but keep the selected domain (carried in the URL hash)
+  function goWindow(linkEl, w) {
+    saveWindow(w);
+    window.location.href = linkEl.getAttribute('href') + window.location.hash;
+    return false;
+  }
+
+  function showDomain(domainId, tabEl) {
+    document.querySelectorAll('.domain-panel').forEach(function(p) { p.style.display = 'none'; });
+    document.querySelectorAll('#domain-tabs .domain-tab').forEach(function(t) { t.classList.remove('active'); });
+    var panel = document.getElementById('domain-' + domainId);
+    if (panel) panel.style.display = '';
+    tabEl.classList.add('active');
+    history.replaceState(null, '', '#domain-' + domainId);
+  }
+
+  // Restore the selected domain from the URL hash on load
+  (function() {
+    var m = window.location.hash.match(/^#domain-(\d+)$/);
+    if (!m) return;
+    var tab = document.querySelector('#domain-tabs .domain-tab[data-domain-id="' + m[1] + '"]');
+    if (tab) showDomain(m[1], tab);
+  })();
+
+  // Delta-fetch the domain whose tab is selected, then swap in its refreshed panel.
+  function fetchActiveDomain(btn) {
+    var tab = document.querySelector('#domain-tabs .domain-tab.active');
+    if (!tab) return;
+    var id = tab.dataset.domainId;
+    var spinner = document.getElementById('fetch-domain-spinner');
+    btn.disabled = true;
+    spinner.classList.add('htmx-request');
+    htmx.ajax('POST', '/htmx/domains/' + id + '/fetch?days={{ window }}',
+              {target: '#domain-' + id, swap: 'innerHTML'})
+      .finally(function() {
+        btn.disabled = false;
+        spinner.classList.remove('htmx-request');
+      });
+  }
+
+  function sendDigest(btn) {
+    var modal = document.getElementById('share-modal');
+    var form = modal.querySelector('form');
+    var to = form.querySelector('[name="to"]').value;
+    if (!to) { alert('Please enter a recipient email.'); return; }
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+    fetch('/api/email/send', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({date: '{{ digest.date }}', to: to}),
+    })
+    .then(function(r) {
+      if (r.ok) { closeModal('share-modal'); showToast('Digest sent to ' + to, 'success'); }
+      else { r.json().then(function(d) { showToast('Error: ' + (d.detail || 'Failed'), 'error'); }); }
+    })
+    .catch(function(e) { showToast('Send failed: ' + e, 'error'); })
+    .finally(function() { btn.disabled = false; btn.textContent = 'Send'; });
+  }
+</script>
+{% endblock %}

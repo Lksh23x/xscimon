@@ -1,0 +1,50 @@
+{% for entry in logs %}
+  <tr>
+    <td class="log-timestamp">{{ entry.timestamp.strftime("%b %-d, %H:%M:%S") }}</td>
+    <td>
+      <span class="log-event-badge log-event-{{ entry.event_type.value }}">
+        {{ entry.event_type.value.replace("_", " ") }}
+      </span>
+    </td>
+    <td class="text-muted text-sm">
+      {% if entry.domain_id %}
+        #{{ entry.domain_id }}
+      {% else %}
+        —
+      {% endif %}
+    </td>
+    <td class="log-message">{{ entry.message }}</td>
+    <td class="text-muted text-sm">
+      {% if entry.call_count is not none %}
+        {{ entry.call_count }}
+      {% else %}
+        —
+      {% endif %}
+    </td>
+  </tr>
+{% else %}
+  <tr>
+    <td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted)">
+      No log entries{% if log_day %} on {{ log_day }} (UTC){% endif %}{% if log_q %} matching “{{ log_q }}”{% endif %}
+    </td>
+  </tr>
+{% endfor %}
+{% if logs %}
+  <tr class="log-footer-row">
+    <td colspan="5">
+      {% if log_shown < log_total %}
+        {% set remaining = log_total - log_shown %}
+        <span class="text-muted text-sm">Showing {{ log_shown }} of {{ log_total }}</span>
+        <button
+          class="btn btn-outline btn-sm"
+          hx-get="/htmx/logs?offset={{ log_shown }}&q={{ log_q | urlencode }}&day={{ log_day }}"
+          hx-target="closest tr"
+          hx-swap="outerHTML"
+          hx-disabled-elt="this"
+        >Load {{ [remaining, log_page_size] | min }} more</button>
+      {% else %}
+        <span class="text-muted text-sm">All {{ log_total }} entr{{ log_total == 1 and "y" or "ies" }} shown</span>
+      {% endif %}
+    </td>
+  </tr>
+{% endif %}

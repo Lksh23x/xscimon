@@ -1,0 +1,11 @@
+{% if posts %}
+  {% for post in posts %}
+    <div class="history-post-item" data-rank="{{ loop.index0 }}">
+      {% include "partials/post_card.html" %}
+    </div>
+  {% endfor %}
+{% else %}
+  <div class="posts-empty" style="padding:20px 0;border:none">
+    No posts found for this period.
+  </div>
+{% endif %}

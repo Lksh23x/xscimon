@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block title %}Admin — xscimon{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Admin</h1>
+    <div class="page-header-meta">System logs and API usage</div>
+  </div>
+  <button class="btn btn-danger" onclick="clearLogs()">Clear Logs</button>
+</div>
+
+<div class="page-body">
+
+  <!-- Stats row -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-card-label">API Calls Today</div>
+      <div class="stat-card-value">{{ calls_today }}</div>
+      <div class="stat-card-sub">
+        of {{ threshold }} limit
+        {% if threshold > 0 %}
+          ({{ ((calls_today / threshold) * 100) | int }}%)
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="stat-card" style="flex:1;display:flex;flex-direction:column;justify-content:center">
+      <div class="stat-card-label" style="margin-bottom:8px">Threshold usage</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="progress-bar-wrap">
+          {% set pct = ((calls_today / threshold * 100) if threshold > 0 else 0) | int %}
+          <div
+            class="progress-bar {% if pct >= 90 %}danger{% elif pct >= 70 %}warning{% endif %}"
+            style="width:{{ [pct, 100] | min }}%"
+          ></div>
+        </div>
+        <span class="text-sm text-muted font-mono">{{ calls_today }} / {{ threshold }}</span>
+      </div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-card-label">Log Entries</div>
+      <div class="stat-card-value">{{ log_total }}</div>
+      <div class="stat-card-sub">in audit log</div>
+    </div>
+  </div>
+
+  <!-- About -->
+  <div class="panel-card" style="margin-bottom:20px;padding:14px 18px">
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <span style="font-weight:600;font-size:13px;color:var(--text-primary)">xscimon</span>
+      <span class="text-sm text-muted font-mono">v{{ app_version }}</span>
+      <span class="badge badge-disabled font-mono" style="font-size:11px">build {{ app_build }}</span>
+    </div>
+  </div>
+
+  <!-- Filters: text search + UTC day (native calendar picker) -->
+  <div class="log-filters" id="log-filters">
+  <div class="search-input-wrap">
+    <span class="search-icon">
+      <svg viewBox="0 0 16 16" stroke-width="1.7"><circle cx="6.5" cy="6.5" r="4.5"/><path d="M12 12l2.5 2.5" stroke-linecap="round"/></svg>
+    </span>
+    <input
+      type="search"
+      class="search-input"
+      placeholder="Search logs…"
+      name="q"
+      hx-get="/htmx/logs"
+      hx-trigger="keyup changed delay:300ms, search"
+      hx-target="#log-table-body"
+      hx-swap="innerHTML"
+      hx-include="#log-day"
+    />
+  </div>
+  <div class="log-day-filter">
+    <button type="button" class="btn btn-outline btn-sm" onclick="shiftLogDay(-1)" title="Previous day">◀</button>
+    <input
+      type="date"
+      id="log-day"
+      name="day"
+      class="form-input"
+      title="Show one day (UTC)"
+      {% if log_oldest %}min="{{ log_oldest.isoformat() }}"{% endif %}
+      {% if log_newest %}max="{{ log_newest.isoformat() }}"{% endif %}
+      hx-get="/htmx/logs"
+      hx-trigger="change"
+      hx-target="#log-table-body"
+      hx-swap="innerHTML"
+      hx-include="[name='q']"
+    />
+    <button type="button" class="btn btn-outline btn-sm" onclick="shiftLogDay(1)" title="Next day">▶</button>
+    <button type="button" class="btn btn-outline btn-sm" onclick="setLogDay('')" title="Show all days">All days</button>
+    <span class="text-muted text-sm">UTC</span>
+  </div>
+  </div>
+
+  <!-- Log table -->
+  <table class="log-table">
+    <thead>
+      <tr>
+        <th>Timestamp</th>
+        <th>Event</th>
+        <th>Domain</th>
+        <th>Message</th>
+        <th>Calls</th>
+      </tr>
+    </thead>
+    <tbody id="log-table-body">
+      {% include "partials/log_entries.html" %}
+    </tbody>
+  </table>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  function setLogDay(value) {
+    var input = document.getElementById('log-day');
+    input.value = value;
+    htmx.trigger(input, 'change');
+  }
+
+  // Step the day filter; from "all days" it starts at the newest day with logs.
+  function shiftLogDay(delta) {
+    var input = document.getElementById('log-day');
+    var base = input.value || input.max;
+    if (!base) return;
+    var d = new Date(base + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + (input.value ? delta : 0));
+    var next = d.toISOString().slice(0, 10);
+    if ((input.min && next < input.min) || (input.max && next > input.max)) return;
+    setLogDay(next);
+  }
+
+  function clearLogs() {
+    if (!confirm('Clear all log entries? This cannot be undone.')) return;
+    fetch('/api/admin/logs', { method: 'DELETE' })
+    .then(function(r) {
+      if (r.ok) { showToast('Logs cleared', 'success'); location.reload(); }
+      else { showToast('Failed to clear logs', 'error'); }
+    });
+  }
+</script>
+{% endblock %}

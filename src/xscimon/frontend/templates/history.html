@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+
+{% block title %}History — xscimon{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>History</h1>
+    <div class="page-header-meta">Pipeline digests ranked by relevance</div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <span class="text-sm" style="color:var(--text-muted);white-space:nowrap">Show top</span>
+    <div class="domain-tabs" style="margin-bottom:0;flex-wrap:nowrap">
+      {% for n, label in [(5,"5"), (10,"10"), (20,"20"), (0,"All")] %}
+        <button class="domain-tab topn-btn" data-n="{{ n }}" onclick="setTopN({{ n }}, this)">
+          {{ label }}
+        </button>
+      {% endfor %}
+    </div>
+    <button class="domain-tab" id="star-filter-btn" onclick="toggleStarFilter(this)" title="Show saved posts only">♥ Saved</button>
+  </div>
+</div>
+
+<div class="page-body">
+
+  {% if domains %}
+    <div class="domain-tabs" id="history-domain-tabs">
+      <a href="/history" class="domain-tab{% if selected_domain is none %} active{% endif %}">All domains</a>
+      {% for d in domains %}
+        <a href="/history?domain={{ d.id }}" class="domain-tab{% if selected_domain == d.id %} active{% endif %}">{{ d.name }}</a>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if not periods %}
+    <div class="posts-empty" style="margin-bottom:32px">
+      {% if selected_domain is not none %}
+        <p style="font-size:14px;font-weight:600;margin-bottom:6px;color:var(--text-secondary)">No history for this domain yet</p>
+        <p>Pick another domain above, or run the pipeline on the <a href="/">Digest</a> page.</p>
+      {% else %}
+        <p style="font-size:14px;font-weight:600;margin-bottom:6px;color:var(--text-secondary)">No pipeline history yet</p>
+        <p>Run the pipeline on the <a href="/">Digest</a> page to create your first entry.</p>
+      {% endif %}
+    </div>
+  {% else %}
+
+    {% for section in periods %}
+      {% set sid = loop.index %}
+      <div class="history-section">
+        <div class="history-section-label">{{ section.section }}</div>
+
+        <!-- Period pills — same visual as domain tabs -->
+        <div class="domain-tabs" id="tabs-{{ sid }}">
+          {% for entry in section.entries %}
+            <button
+              class="domain-tab{% if loop.first %} active{% endif %}"
+              id="tab-{{ entry.id }}"
+              onclick="selectPeriod('{{ entry.id }}', '{{ entry.from_date }}', '{{ entry.to_date }}', {{ sid }}, this)"
+            >
+              {% if entry.stats.posts > 0 %}
+                <span class="status-dot status-dot-complete" title="{{ entry.stats.posts }} stored post{{ entry.stats.posts != 1 and 's' or '' }}"></span>
+              {% else %}
+                <span class="status-dot status-dot-pending" title="No stored posts"></span>
+              {% endif %}
+              {{ entry.label }}
+            </button>
+          {% endfor %}
+        </div>
+
+        <!-- Single content panel for this section — swaps when a tab is selected -->
+        <div class="history-period-panel" id="panel-{{ sid }}">
+          <div style="padding:16px 0;text-align:center;color:var(--text-muted)">
+            <span class="spinner spinner-dark" style="display:inline-block"></span>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+
+  {% endif %}
+
+  {% if keyword_snaps %}
+    <div class="history-section" style="margin-top:8px">
+      <div class="history-section-label">Saved keyword searches</div>
+      <ul class="history-list">
+        {% for snap in keyword_snaps %}
+          <li>
+            <a href="/history/keywords/{{ snap.id }}" class="history-item">
+              <div style="min-width:0">
+                <div class="history-date">{{ snap.rule_name }}</div>
+                <div class="history-meta" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ snap.query }}</div>
+                <div class="history-meta" style="margin-top:2px">
+                  {{ snap.post_count }} post{{ snap.post_count != 1 and "s" or "" }}
+                  · lookback {{ snap.lookback_days }}d
+                  · {{ snap.search_to[:10] }}
+                </div>
+              </div>
+              <div class="action-row" style="flex-shrink:0">
+                <span class="badge badge-dynamic">keyword</span>
+                <span class="text-muted" style="font-size:16px">›</span>
+              </div>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  var currentTopN = parseInt(localStorage.getItem('xscimon_history_topn') || '10');
+  var periodCache = {};   // entry_id → rendered html string
+  var selectedDomain = {{ selected_domain if selected_domain is not none else 'null' }};
+
+  /* Override base applyFilters to combine TOP N + star. */
+  function applyFilters() {
+    document.querySelectorAll('.history-post-item').forEach(function(el) {
+      var rank = parseInt(el.dataset.rank);
+      var starBtn = el.querySelector('.star-btn');
+      var postId = starBtn ? starBtn.dataset.postId : null;
+      var hiddenByRank = currentTopN !== 0 && rank >= currentTopN;
+      var hiddenByStar = starFilterActive && (!postId || !starredIds.has(postId));
+      el.style.display = (hiddenByRank || hiddenByStar) ? 'none' : '';
+    });
+  }
+
+  function setTopN(n, btn) {
+    currentTopN = n;
+    localStorage.setItem('xscimon_history_topn', String(n));
+    document.querySelectorAll('.topn-btn').forEach(function(b) { b.classList.remove('active'); });
+    if (btn) btn.classList.add('active');
+    applyFilters();
+  }
+
+  function selectPeriod(id, fromDate, toDate, sectionId, tabEl) {
+    var panel = document.getElementById('panel-' + sectionId);
+
+    // Second click on the active tab — roll up
+    if (tabEl.classList.contains('active')) {
+      tabEl.classList.remove('active');
+      panel.innerHTML = '';
+      return;
+    }
+
+    // Switch active pill within this section
+    var tabsEl = document.getElementById('tabs-' + sectionId);
+    tabsEl.querySelectorAll('.domain-tab').forEach(function(t) { t.classList.remove('active'); });
+    tabEl.classList.add('active');
+
+    if (periodCache[id] !== undefined) {
+      panel.innerHTML = periodCache[id];
+      applyStar();
+      applyFilters();
+      return;
+    }
+
+    // Show loading state
+    panel.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted)">' +
+      '<span class="spinner spinner-dark" style="display:inline-block"></span></div>';
+
+    var url = '/htmx/history/period?from_date=' + fromDate + '&to_date=' + toDate;
+    if (selectedDomain !== null) url += '&domain_id=' + selectedDomain;
+    fetch(url)
+      .then(function(r) { return r.text(); })
+      .then(function(html) {
+        periodCache[id] = html;
+        // Only render if this tab is still active (user may have switched)
+        if (tabEl.classList.contains('active')) {
+          panel.innerHTML = html;
+          applyStar();
+          applyFilters();
+        }
+      })
+      .catch(function() {
+        panel.innerHTML = '<div class="posts-empty" style="padding:16px 0;border:none">Failed to load posts.</div>';
+      });
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    // Restore saved TOP N button state
+    document.querySelectorAll('.topn-btn').forEach(function(b) {
+      b.classList.toggle('active', parseInt(b.dataset.n) === currentTopN);
+    });
+
+    // Auto-load the first tab of every section
+    {% for section in periods %}
+      {% set sid = loop.index %}
+      {% if section.entries %}
+        {% set first = section.entries[0] %}
+        selectPeriod(
+          '{{ first.id }}',
+          '{{ first.from_date }}',
+          '{{ first.to_date }}',
+          {{ sid }},
+          document.getElementById('tab-{{ first.id }}')
+        );
+      {% endif %}
+    {% endfor %}
+  });
+</script>
+{% endblock %}

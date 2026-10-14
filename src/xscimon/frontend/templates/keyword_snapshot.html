@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}{{ snap.rule_name }} — Keyword Search — xscimon{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ snap.rule_name }}</h1>
+    <div class="page-header-meta">Saved keyword search</div>
+  </div>
+  <a href="/history" class="btn btn-outline">← History</a>
+</div>
+
+<div class="page-body">
+
+  <div class="rule-card" style="margin-bottom:20px">
+    <div class="rule-card-header" style="margin-bottom:10px">
+      <span class="rule-card-name">Search metadata</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px 24px;font-size:13px">
+      <div>
+        <div class="text-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Query</div>
+        <div class="font-mono" style="word-break:break-all">{{ snap.query }}</div>
+      </div>
+      <div>
+        <div class="text-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Lookback</div>
+        <div>{{ snap.lookback_days }} days</div>
+      </div>
+      <div>
+        <div class="text-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Window</div>
+        <div>{{ snap.search_from | format_dt }} → {{ snap.search_to | format_dt }}</div>
+      </div>
+      <div>
+        <div class="text-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Results</div>
+        <div>Fetched {{ snap.fetched_count }} · kept {{ snap.scored_count }} · saved {{ posts | length }}</div>
+      </div>
+      <div>
+        <div class="text-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">API calls</div>
+        <div>{{ snap.api_calls_used }}</div>
+      </div>
+      <div>
+        <div class="text-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Saved at</div>
+        <div>{{ snap.saved_at.isoformat()[:16] | replace("T", " ") }} UTC</div>
+      </div>
+    </div>
+  </div>
+
+  {% if posts %}
+    {% for post in posts %}
+      <div class="kw-result-card">
+        <div class="kw-result-card-handle">
+          @{{ post.author_handle }}
+          <span class="text-muted" style="font-weight:400;font-family:var(--font-sans)">
+            · {{ post.created_at | format_dt }}
+          </span>
+          <span class="score-pill" style="margin-left:6px">{{ post.relevance_score }}</span>
+        </div>
+        <div class="kw-result-card-text">{{ post.text }}</div>
+        <div class="post-engagement" style="margin-top:6px">
+          <span class="post-engagement-item">♥ {{ post.likes }}</span>
+          <span class="post-engagement-item">🔁 {{ post.retweets }}</span>
+          {% if post.post_id and not post.post_id.startswith("mock-") %}
+            <a
+              href="https://x.com/{{ post.author_handle }}/status/{{ post.post_id }}"
+              target="_blank"
+              rel="noopener"
+              class="text-sm"
+              style="margin-left:auto;color:var(--accent);text-decoration:none"
+            >View on X ↗</a>
+          {% endif %}
+        </div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="posts-empty">
+      <p>No posts were saved with this snapshot.</p>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

@@ -1,0 +1,69 @@
+{% set cred = post.get("credibility_level", "normal") %}
+{% set score = post.get("relevance_score", 0) %}
+{% if score >= 0.7 %}
+  {% set score_tier = "high" %}
+{% elif score >= 0.4 %}
+  {% set score_tier = "mid" %}
+{% else %}
+  {% set score_tier = "low" %}
+{% endif %}
+
+<div class="post-card" data-credibility="{{ cred }}">
+  <div class="post-card-header">
+    <div class="post-card-author">
+      <span class="post-card-handle">
+        <a href="https://x.com/{{ post.author_handle }}" target="_blank" rel="noopener">
+          @{{ post.author_handle }}
+        </a>
+      </span>
+      <span class="post-card-time">{{ post.created_at | format_dt }}</span>
+      {% set age = post.created_at | relative_age %}
+      {% if age and age != "today" %}
+        <span class="post-age-tag">{{ age }}</span>
+      {% endif %}
+    </div>
+    <div class="post-card-badges">
+      {% if cred == "high" %}
+        <span class="badge badge-high">High</span>
+      {% elif cred == "low" %}
+        <span class="badge badge-low">Low</span>
+      {% endif %}
+      <span class="score-pill" data-score="{{ score_tier }}" title="Relevance score">{{ score }}</span>
+      <button
+        class="star-btn"
+        data-post-id="{{ post.post_id }}"
+        onclick="toggleStar(this)"
+        title="Favourite this post"
+      ><svg width="12" height="10" viewBox="0 0 12 10" overflow="visible" xmlns="http://www.w3.org/2000/svg">
+        <path d="M6 9.5C2 7.5 0 5.5 0 3.5 0 1.7 1.4 0.5 3 0.5c1 0 2 .5 3 1.5C7 1 8 .5 9 .5c1.6 0 3 1.2 3 3 0 2-2 4-6 6z"/>
+      </svg></button>
+    </div>
+  </div>
+
+  <div class="post-card-text">{{ post.text | truncate_text(320) }}</div>
+
+  <div class="post-card-footer">
+    <div class="post-engagement">
+      <span class="post-engagement-item" title="Likes">
+        ♥ {{ post.likes }}
+      </span>
+      <span class="post-engagement-item" title="Retweets">
+        🔁 {{ post.retweets }}
+      </span>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="text-sm text-muted" title="Final score">
+        ⚡ {{ post.get("final_score", 0) }}
+      </div>
+      {% if not post.post_id.startswith("mock-") %}
+        <a
+          href="https://x.com/{{ post.author_handle }}/status/{{ post.post_id }}"
+          target="_blank"
+          rel="noopener"
+          class="text-sm"
+          style="color:var(--accent);text-decoration:none"
+        >View on X ↗</a>
+      {% endif %}
+    </div>
+  </div>
+</div>

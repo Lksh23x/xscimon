@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+
+{% block title %}Keywords — xscimon{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Keyword Rules</h1>
+    <div class="page-header-meta">Dynamic filters and preset search rules</div>
+  </div>
+  <button class="btn btn-primary" onclick="openModal('add-rule-modal')">+ Add Rule</button>
+</div>
+
+<div class="page-body">
+
+  {% if not rules %}
+    <div class="posts-empty">
+      <p style="font-size:14px;font-weight:600;margin-bottom:6px;color:var(--text-secondary)">No keyword rules</p>
+      <p>Click "Add Rule" to create your first keyword filter.</p>
+    </div>
+  {% else %}
+    {% for rule in rules %}
+      <div class="rule-card" id="rule-{{ rule.id }}">
+        <div class="rule-card-header">
+          <span class="rule-card-name">{{ rule.name }}</span>
+          <span class="badge badge-{{ rule.mode.value }}">{{ rule.mode.value }}</span>
+          {% if rule.enabled %}
+            <span class="badge badge-enabled">enabled</span>
+          {% else %}
+            <span class="badge badge-disabled">disabled</span>
+          {% endif %}
+        </div>
+
+        <div class="rule-card-query">{{ rule.query }}</div>
+
+        <div class="rule-card-meta">
+          <span>Priority <strong style="color:var(--text-secondary)">{{ rule.priority_weight }}</strong></span>
+          <span>Lookback <strong style="color:var(--text-secondary)">{{ rule.lookback_days }}d</strong></span>
+          {% if rule.skill_md %}
+            <span style="color:var(--accent)">SKILL.md</span>
+          {% endif %}
+        </div>
+
+        <div class="rule-card-actions">
+          <button
+            class="btn btn-primary btn-sm"
+            hx-post="/htmx/keywords/{{ rule.id }}/run"
+            hx-target="#rule-results-{{ rule.id }}"
+            hx-swap="innerHTML"
+            hx-indicator="#rule-spinner-{{ rule.id }}"
+          >
+            <span id="rule-spinner-{{ rule.id }}" class="htmx-indicator">
+              <span class="spinner"></span>
+            </span>
+            Run
+          </button>
+
+          <button class="btn btn-secondary btn-sm" onclick="openEditModal({{ rule.id }})">Edit</button>
+
+          {% if rule.mode.value == "dynamic" %}
+            <button class="btn btn-secondary btn-sm" onclick="promoteRule({{ rule.id }})">Promote to Preset</button>
+          {% endif %}
+
+          <button class="btn btn-outline btn-sm" onclick="toggleRule({{ rule.id }}, {{ rule.enabled | lower }})">
+            {{ rule.enabled and "Disable" or "Enable" }}
+          </button>
+
+          <button class="btn btn-danger btn-sm" onclick="deleteRule({{ rule.id }}, '{{ rule.name }}')">Delete</button>
+        </div>
+
+        <div id="rule-results-{{ rule.id }}"></div>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+</div>
+
+<!-- Edit rule modal -->
+<dialog id="edit-rule-modal">
+  <div class="modal-header">
+    <span class="modal-title">Edit Keyword Rule</span>
+    <button class="modal-close" onclick="closeModal('edit-rule-modal')">×</button>
+  </div>
+  <div class="modal-body">
+    <form id="edit-rule-form" onsubmit="submitEditRule(event)">
+      <input type="hidden" id="edit-rule-id" />
+      <div class="form-group">
+        <label class="form-label">Name</label>
+        <input type="text" name="name" class="form-input" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Query (keywords / hashtags)</label>
+        <input type="text" name="query" class="form-input" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Mode</label>
+        <select name="mode" class="form-select">
+          <option value="dynamic">Dynamic (on-demand)</option>
+          <option value="preset">Preset (run in pipeline)</option>
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group">
+          <label class="form-label">Lookback (days)</label>
+          <input type="number" name="lookback_days" class="form-input" min="1" max="30" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Priority weight</label>
+          <input type="number" name="priority_weight" class="form-input" min="0" max="5" step="0.1" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">SKILL.md (optional context)</label>
+        <textarea name="skill_md" class="form-textarea" placeholder="Describe what makes a post relevant…"></textarea>
+      </div>
+    </form>
+  </div>
+  <div class="modal-footer">
+    <button type="button" class="btn btn-outline" onclick="closeModal('edit-rule-modal')">Cancel</button>
+    <button type="submit" form="edit-rule-form" class="btn btn-primary">Save</button>
+  </div>
+</dialog>
+
+<!-- Add rule modal -->
+<dialog id="add-rule-modal">
+  <div class="modal-header">
+    <span class="modal-title">Add Keyword Rule</span>
+    <button class="modal-close" onclick="closeModal('add-rule-modal')">×</button>
+  </div>
+  <div class="modal-body">
+    <form id="add-rule-form" onsubmit="addRule(event)">
+      <div class="form-group">
+        <label class="form-label">Name</label>
+        <input type="text" name="name" class="form-input" placeholder="e.g. CRISPR weekly" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Query (keywords / hashtags)</label>
+        <input type="text" name="query" class="form-input" placeholder="#CRISPR gene editing" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Mode</label>
+        <select name="mode" class="form-select">
+          <option value="dynamic">Dynamic (on-demand)</option>
+          <option value="preset">Preset (run in pipeline)</option>
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group">
+          <label class="form-label">Lookback (days)</label>
+          <input type="number" name="lookback_days" class="form-input" value="7" min="1" max="30" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Priority weight</label>
+          <input type="number" name="priority_weight" class="form-input" value="1.0" min="0" max="5" step="0.1" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">SKILL.md (optional context)</label>
+        <textarea name="skill_md" class="form-textarea" placeholder="Describe what makes a post relevant…"></textarea>
+      </div>
+    </form>
+  </div>
+  <div class="modal-footer">
+    <button type="button" class="btn btn-outline" onclick="closeModal('add-rule-modal')">Cancel</button>
+    <button type="submit" form="add-rule-form" class="btn btn-primary">Create Rule</button>
+  </div>
+</dialog>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  var RULES = {};
+  {{ rules_data | tojson }}.forEach(function(r) { RULES[r.id] = r; });
+
+  function openEditModal(id) {
+    var r = RULES[id];
+    if (!r) return;
+    var form = document.getElementById('edit-rule-form');
+    document.getElementById('edit-rule-id').value = id;
+    form.elements['name'].value = r.name;
+    form.elements['query'].value = r.query;
+    form.elements['mode'].value = r.mode;
+    form.elements['lookback_days'].value = r.lookback_days;
+    form.elements['priority_weight'].value = r.priority_weight;
+    form.elements['skill_md'].value = r.skill_md;
+    openModal('edit-rule-modal');
+  }
+
+  function submitEditRule(event) {
+    event.preventDefault();
+    var form = event.target;
+    var id = document.getElementById('edit-rule-id').value;
+    var data = {
+      name: form.elements['name'].value,
+      query: form.elements['query'].value,
+      mode: form.elements['mode'].value,
+      lookback_days: parseInt(form.elements['lookback_days'].value),
+      priority_weight: parseFloat(form.elements['priority_weight'].value),
+      skill_md: form.elements['skill_md'].value || null,
+    };
+    closeModal('edit-rule-modal');
+    fetch('/api/keywords/' + id, {
+      method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)
+    }).then(function(r) {
+      if (r.ok) { location.reload(); }
+      else { r.json().then(function(d) { showToast('Error: ' + (d.detail || 'Failed'), 'error'); }); }
+    });
+  }
+
+  function addRule(event) {
+    event.preventDefault();
+    var form = event.target;
+    var data = {
+      name: form.name.value,
+      query: form.query.value,
+      mode: form.mode.value,
+      lookback_days: parseInt(form.lookback_days.value),
+      priority_weight: parseFloat(form.priority_weight.value),
+      skill_md: form.skill_md.value || null,
+    };
+    fetch('/api/keywords', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)
+    }).then(function(r) {
+      if (r.ok) { location.reload(); }
+      else { r.json().then(function(d) { showToast('Error: ' + (d.detail || 'Failed'), 'error'); }); }
+    });
+    closeModal('add-rule-modal');
+  }
+
+  function deleteRule(id, name) {
+    if (!confirm('Delete rule "' + name + '"?')) return;
+    fetch('/api/keywords/' + id, { method: 'DELETE' })
+    .then(function(r) { if (r.ok || r.status === 204) { location.reload(); } });
+  }
+
+  function promoteRule(id) {
+    if (!confirm('Promote this rule to a preset? It will run during every pipeline execution.')) return;
+    fetch('/api/keywords/' + id + '/promote', { method: 'POST' })
+    .then(function(r) {
+      if (r.ok) { showToast('Rule promoted to preset', 'success'); location.reload(); }
+      else { showToast('Failed to promote rule', 'error'); }
+    });
+  }
+
+  function toggleRule(id, currentlyEnabled) {
+    fetch('/api/keywords/' + id, {
+      method: 'PATCH', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({enabled: !currentlyEnabled})
+    }).then(function(r) {
+      if (r.ok) { location.reload(); }
+      else { showToast('Failed to update rule', 'error'); }
+    });
+  }
+</script>
+{% endblock %}

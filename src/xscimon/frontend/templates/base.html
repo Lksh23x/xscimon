@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}xscimon{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="/static/app.css" />
+  <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+</head>
+<body>
+<div class="layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <a href="/" class="sidebar-brand">
+      <div class="sidebar-brand-icon">
+        <svg viewBox="0 0 16 16" stroke-width="1.8"><circle cx="8" cy="8" r="3"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M11.54 4.46l-1.41 1.41M4.95 11.54l-1.41 1.41"/></svg>
+      </div>
+      <span class="sidebar-brand-name">xscimon</span>
+    </a>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Digest</div>
+      <a href="/" class="nav-link {% if request.url.path == '/' %}active{% endif %}">
+        <span class="nav-link-icon">
+          <svg viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" rx="1.5"/><path d="M5 6h6M5 8.5h6M5 11h4" stroke-linecap="round"/></svg>
+        </span>
+        Today
+      </a>
+      <a href="/history" class="nav-link {% if request.url.path.startswith('/history') %}active{% endif %}">
+        <span class="nav-link-icon">
+          <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 5v3.5l2.5 1.5" stroke-linecap="round"/></svg>
+        </span>
+        History
+      </a>
+
+      <div class="nav-section-label" style="margin-top:10px">Configuration</div>
+      <a href="/domains" class="nav-link {% if request.url.path == '/domains' %}active{% endif %}">
+        <span class="nav-link-icon">
+          <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 2c-2 2-2 8 0 12M8 2c2 2 2 8 0 12M2 8h12"/></svg>
+        </span>
+        Domains
+      </a>
+      <a href="/keywords" class="nav-link {% if request.url.path == '/keywords' %}active{% endif %}">
+        <span class="nav-link-icon">
+          <svg viewBox="0 0 16 16"><circle cx="6.5" cy="6.5" r="4.5"/><path d="M12 12l2.5 2.5" stroke-linecap="round"/></svg>
+        </span>
+        Keywords
+      </a>
+
+      <div class="nav-section-label" style="margin-top:10px">System</div>
+      <a href="/admin" class="nav-link {% if request.url.path == '/admin' %}active{% endif %}">
+        <span class="nav-link-icon">
+          <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M11.54 4.46l-1.41 1.41M4.95 11.54l-1.41 1.41"/></svg>
+        </span>
+        Admin
+      </a>
+    </nav>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    {% if mock_mode %}
+      <div class="mock-banner">
+        <span class="mock-banner-tag">Mock</span>
+        No X API credentials detected — all posts and scores are simulated.
+      </div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+  function showToast(message, type) {
+    var tc = document.getElementById('toast-container');
+    var t = document.createElement('div');
+    t.className = 'toast toast-' + (type || 'success');
+    t.textContent = message;
+    tc.appendChild(t);
+    setTimeout(function() { if (t.parentNode) t.parentNode.removeChild(t); }, 4000);
+  }
+
+  document.body.addEventListener('htmx:afterSwap', function(evt) {
+    if (evt.detail.pathInfo && evt.detail.pathInfo.requestPath) {
+      var path = evt.detail.pathInfo.requestPath;
+      if (path.indexOf('/htmx/pipeline/run') !== -1) {
+        showToast('Pipeline run triggered', 'success');
+      }
+    }
+  });
+
+  function openModal(id) {
+    var d = document.getElementById(id);
+    if (d) d.showModal();
+  }
+  function closeModal(id) {
+    var d = document.getElementById(id);
+    if (d) d.close();
+  }
+</script>
+
+<script>
+  /* ── Favorites / star ──────────────────────────────────────────────── */
+  var starredIds = new Set();
+  var starFilterActive = false;
+
+  /* Apply starred visual directly via inline styles on the SVG path.
+     Inline styles have maximum CSS specificity and are immune to cascade
+     issues that affect stylesheet rules on inline SVG elements. */
+  function _starVisual(btn, on) {
+    var path = btn.querySelector('path');
+    btn.classList.toggle('starred', on);
+    if (path) {
+      path.style.fill   = on ? '#00cfaa' : 'none';
+      path.style.stroke = on ? '#00cfaa' : '#44446a';
+    }
+    btn.style.background  = on ? 'rgba(0,207,170,0.10)' : '';
+    btn.style.borderColor = on ? 'rgba(0,207,170,0.25)' : '';
+  }
+
+  function initStars() {
+    fetch('/api/favorites')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        starredIds = new Set(data.post_ids);
+        applyStar();
+      });
+  }
+
+  function applyStar() {
+    document.querySelectorAll('.star-btn').forEach(function(btn) {
+      _starVisual(btn, starredIds.has(btn.dataset.postId));
+    });
+  }
+
+  function toggleStar(btn) {
+    var postId = btn.dataset.postId;
+    var adding = !starredIds.has(postId);
+
+    if (adding) { starredIds.add(postId); }
+    else        { starredIds.delete(postId); if (starFilterActive) applyFilters(); }
+
+    _starVisual(btn, adding);
+
+    fetch('/api/favorites/' + encodeURIComponent(postId), {
+      method: adding ? 'POST' : 'DELETE'
+    }).then(function(r) {
+      if (!r.ok && r.status !== 204) {
+        showToast('Could not save favourite — restart the server once to create the table', 'error');
+      }
+    }).catch(function() {
+      showToast('Could not reach /api/favorites', 'error');
+    });
+  }
+
+  function toggleStarFilter(btn) {
+    starFilterActive = !starFilterActive;
+    btn.classList.toggle('active', starFilterActive);
+    applyFilters();
+  }
+
+  /*
+   * Default filter: hides .post-card elements not in starredIds when filter
+   * is active. Pages that need additional logic (e.g. TOP N) should override
+   * this function in their own extra_scripts block.
+   */
+  function applyFilters() {
+    document.querySelectorAll('.post-card').forEach(function(card) {
+      var btn = card.querySelector('.star-btn');
+      var postId = btn ? btn.dataset.postId : null;
+      card.style.display = (starFilterActive && (!postId || !starredIds.has(postId))) ? 'none' : '';
+    });
+  }
+
+  /* Re-apply star visuals after any HTMX swap that injects new post cards. */
+  document.body.addEventListener('htmx:afterSettle', applyStar);
+
+  document.addEventListener('DOMContentLoaded', initStars);
+</script>
+
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

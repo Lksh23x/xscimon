@@ -1,0 +1,31 @@
+# xscimon seed data — loaded by: uv run python scripts/seed.py
+#
+# Each domain points at two plain files you can edit without touching code:
+#   skill:    markdown prompt injected as LLM context when scoring posts
+#   accounts: CSV of X handles to track (same format the UI's Import/Export uses)
+# Paths are relative to this file.
+
+domains:
+  - name: Pharma and Research
+    top_n: 20
+    skill: skills/pharma-and-research.md
+    accounts: accounts/pharma-and-research.csv
+
+  - name: AI Research, GenAI Technology
+    top_n: 20
+    skill: skills/ai-research-genai-technology.md
+    accounts: accounts/ai-research-genai-technology.csv
+
+  - name: Uranium
+    top_n: 10
+    skill: skills/uranium.md
+    accounts: accounts/uranium.csv
+
+# Keyword rules use X API v2 search syntax (see README). mode: dynamic | preset.
+# `skill` is optional, same as for domains.
+keywords:
+  - name: Pharma Research
+    query: '"AI drug discovery" OR "ML for chemistry" OR "cheminformatics" OR "single cell RNA-seq" OR "spatial transcriptomics"'
+    mode: dynamic
+    lookback_days: 7
+    priority_weight: 1.0
