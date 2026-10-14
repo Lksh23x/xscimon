@@ -175,3 +175,7 @@ curl -X POST "localhost:8000/api/digest/run?days=3"   # backfill the last 3 days
 
 The REST API is documented at `/docs` (OpenAPI) while the server is running.
 `CLAUDE.md` covers the architecture and layer rules.
+
+## License
+
+[MIT](LICENSE)
